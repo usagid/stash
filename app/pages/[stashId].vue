@@ -21,6 +21,10 @@ const decrypting = ref(false)
 const errorMessage = ref('')
 const copiedFieldTitle = ref('')
 
+useHead({
+  title: `${stashId}`
+})
+
 const copyField = async (title: string, value: string) => {
   await navigator.clipboard.writeText(value)
   copiedFieldTitle.value = title

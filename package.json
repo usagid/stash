@@ -12,6 +12,7 @@
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
     "@element-plus/nuxt": "1.1.5",
+    "@noble/ciphers": "^2.4.0",
     "@nuxt/fonts": "0.14.0",
     "element-plus": "^2.14.6",
     "nuxt": "^4.5.2",

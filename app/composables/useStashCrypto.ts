@@ -1,6 +1,10 @@
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js'
+
+export type StashAlgorithm = 'AES-256-GCM' | 'AES-128-GCM' | 'XChaCha20-Poly1305'
+
 export interface StashEnvelope {
   version: 1
-  algorithm: 'AES-256-GCM' | 'AES-128-GCM'
+  algorithm: StashAlgorithm
   iv: string
   ciphertext: string
   innerIv?: string
@@ -40,34 +44,77 @@ function asBufferSource(bytes: Uint8Array) {
   return bytes.slice().buffer
 }
 
-async function derivePasswordKey(password: string, salt: Uint8Array, iterations: number, keyLength: 128 | 256) {
-  const material = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveKey'])
-  return crypto.subtle.deriveKey(
+function isXChaCha(algorithm: StashAlgorithm) {
+  return algorithm === 'XChaCha20-Poly1305'
+}
+
+function keyLengthFor(algorithm: StashAlgorithm) {
+  return algorithm === 'AES-128-GCM' ? 16 : 32
+}
+
+function nonceLengthFor(algorithm: StashAlgorithm) {
+  return isXChaCha(algorithm) ? 24 : 12
+}
+
+async function derivePasswordBytes(password: string, salt: Uint8Array, iterations: number, length: number) {
+  const material = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
     { name: 'PBKDF2', salt: asBufferSource(salt), iterations, hash: 'SHA-256' },
     material,
-    { name: 'AES-GCM', length: keyLength },
-    false,
-    ['encrypt', 'decrypt'],
+    length * 8,
   )
+  return new Uint8Array(bits)
+}
+
+async function encryptLayer(algorithm: StashAlgorithm, key: Uint8Array, plaintext: Uint8Array) {
+  const iv = randomBytes(nonceLengthFor(algorithm))
+  if (isXChaCha(algorithm)) {
+    return { iv, ciphertext: xchacha20poly1305(key, iv).encrypt(plaintext) }
+  }
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    asBufferSource(key),
+    { name: 'AES-GCM', length: key.length * 8 },
+    false,
+    ['encrypt'],
+  )
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: asBufferSource(iv) },
+    cryptoKey,
+    asBufferSource(plaintext),
+  )
+  return { iv, ciphertext: new Uint8Array(ciphertext) }
+}
+
+async function decryptLayer(algorithm: StashAlgorithm, key: Uint8Array, iv: Uint8Array, ciphertext: Uint8Array) {
+  if (isXChaCha(algorithm)) return xchacha20poly1305(key, iv).decrypt(ciphertext)
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    asBufferSource(key),
+    { name: 'AES-GCM', length: key.length * 8 },
+    false,
+    ['decrypt'],
+  )
+  const plaintext = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: asBufferSource(iv) },
+    cryptoKey,
+    asBufferSource(ciphertext),
+  )
+  return new Uint8Array(plaintext)
 }
 
 export async function encryptStash(
   payload: unknown,
   password = '',
-  algorithm: StashEnvelope['algorithm'] = 'AES-256-GCM',
+  algorithm: StashAlgorithm = 'AES-256-GCM',
 ) {
-  const keyLength = algorithm === 'AES-256-GCM' ? 256 : 128
-  const contentKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: keyLength }, true, ['encrypt', 'decrypt'])
-  const iv = randomBytes(12)
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: asBufferSource(iv) },
-    contentKey,
-    encoder.encode(JSON.stringify(payload)),
-  )
-  const innerIv = toBase64Url(iv)
-  const innerCiphertext = toBase64Url(new Uint8Array(ciphertext))
-  const rawKey = await crypto.subtle.exportKey('raw', contentKey)
-  const fragmentKey = toBase64Url(new Uint8Array(rawKey))
+  const contentKey = randomBytes(keyLengthFor(algorithm))
+  const inner = await encryptLayer(algorithm, contentKey, encoder.encode(JSON.stringify(payload)))
+  const innerIv = toBase64Url(inner.iv)
+  const innerCiphertext = toBase64Url(inner.ciphertext)
+  const fragmentKey = toBase64Url(contentKey)
 
   if (!password) {
     return {
@@ -76,53 +123,56 @@ export async function encryptStash(
         algorithm,
         iv: innerIv,
         ciphertext: innerCiphertext,
-      },
+      } satisfies StashEnvelope,
       fragmentKey,
     }
   }
 
   const salt = randomBytes(16)
-  const outerIv = randomBytes(12)
-  const passwordKey = await derivePasswordKey(password, salt, PBKDF2_ITERATIONS, keyLength)
+  const passwordKey = await derivePasswordBytes(password, salt, PBKDF2_ITERATIONS, keyLengthFor(algorithm))
   const outerPayload = encoder.encode(JSON.stringify({ iv: innerIv, ciphertext: innerCiphertext }))
-  const outerCiphertext = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv: asBufferSource(outerIv) },
-    passwordKey,
-    outerPayload,
-  )
+  const outer = await encryptLayer(algorithm, passwordKey, outerPayload)
 
   return {
     envelope: {
       version: 1,
       algorithm,
-      iv: toBase64Url(outerIv),
+      iv: toBase64Url(outer.iv),
       innerIv,
-      ciphertext: toBase64Url(new Uint8Array(outerCiphertext)),
+      ciphertext: toBase64Url(outer.ciphertext),
       salt: toBase64Url(salt),
       kdf: 'PBKDF2-SHA-256',
       iterations: PBKDF2_ITERATIONS,
-    },
+    } satisfies StashEnvelope,
     fragmentKey,
   }
 }
 
 export async function decryptStash(envelope: StashEnvelope, password = '', fragmentKey = '') {
-  if (envelope.version !== 1 || !['AES-256-GCM', 'AES-128-GCM'].includes(envelope.algorithm)) {
+  if (
+    envelope.version !== 1 ||
+    !['AES-256-GCM', 'AES-128-GCM', 'XChaCha20-Poly1305'].includes(envelope.algorithm)
+  ) {
     throw new Error('Unsupported stash encryption')
   }
 
   if (!fragmentKey) throw new Error('The decryption key is missing from the URL')
-  const keyLength = envelope.algorithm === 'AES-256-GCM' ? 256 : 128
-  const contentKey = await crypto.subtle.importKey('raw', fromBase64Url(fragmentKey), { name: 'AES-GCM', length: keyLength }, false, ['decrypt'])
+  const contentKey = fromBase64Url(fragmentKey)
   let contentIv = envelope.iv
   let contentCiphertext = envelope.ciphertext
 
   if (envelope.innerIv) {
     if (!password || !envelope.salt || !envelope.iterations) throw new Error('A password is required')
-    const passwordKey = await derivePasswordKey(password, fromBase64Url(envelope.salt), envelope.iterations, keyLength)
-    const outerPlaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv: asBufferSource(fromBase64Url(envelope.iv)) },
+    const passwordKey = await derivePasswordBytes(
+      password,
+      fromBase64Url(envelope.salt),
+      envelope.iterations,
+      keyLengthFor(envelope.algorithm),
+    )
+    const outerPlaintext = await decryptLayer(
+      envelope.algorithm,
       passwordKey,
+      fromBase64Url(envelope.iv),
       fromBase64Url(envelope.ciphertext),
     )
     const innerEnvelope = JSON.parse(decoder.decode(outerPlaintext)) as { iv: string, ciphertext: string }
@@ -130,9 +180,10 @@ export async function decryptStash(envelope: StashEnvelope, password = '', fragm
     contentCiphertext = innerEnvelope.ciphertext
   }
 
-  const plaintext = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: asBufferSource(fromBase64Url(contentIv)) },
+  const plaintext = await decryptLayer(
+    envelope.algorithm,
     contentKey,
+    fromBase64Url(contentIv),
     fromBase64Url(contentCiphertext),
   )
   return JSON.parse(decoder.decode(plaintext)) as {

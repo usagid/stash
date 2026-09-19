@@ -18,7 +18,7 @@ export default defineEventHandler(async (event) => {
   const envelopeValue = candidate && typeof candidate === 'object'
     ? candidate as Record<string, unknown>
     : undefined
-  const validAlgorithm = envelopeValue?.algorithm === 'AES-256-GCM' || envelopeValue?.algorithm === 'AES-128-GCM'
+  const validAlgorithm = ['AES-256-GCM', 'AES-128-GCM', 'XChaCha20-Poly1305'].includes(String(envelopeValue?.algorithm))
 
   if (
     !envelopeValue ||

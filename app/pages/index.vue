@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { bundledLanguagesInfo } from 'shiki/langs'
+import type { StashAlgorithm } from '~/composables/useStashCrypto'
 import { reactive } from 'vue'
 
 const code = ref('')
@@ -17,9 +18,10 @@ const formatOptions = [
   }))
 ]
 
-const encryptionOptions = [
+const encryptionOptions: Array<{ label: string, value: StashAlgorithm }> = [
   { label: 'AES-256-GCM (recommended)', value: 'AES-256-GCM' },
   { label: 'AES-128-GCM', value: 'AES-128-GCM' },
+  { label: 'XChaCha20-Poly1305', value: 'XChaCha20-Poly1305' },
 ]
 
 const expirationOptions = [
@@ -50,7 +52,7 @@ interface FormField {
 const form = reactive({
   type: 'text',
   format: 'plaintext',
-  encryption: 'AES-256-GCM' as 'AES-256-GCM' | 'AES-128-GCM',
+  encryption: 'AES-256-GCM' as StashAlgorithm,
   password: '',
   burn: false,
   expiration: '86400',

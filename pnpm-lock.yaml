@@ -14,6 +14,9 @@ importers:
       '@element-plus/nuxt':
         specifier: 1.1.5
         version: 1.1.5(@element-plus/icons-vue@2.3.2(vue@3.5.43))(element-plus@2.14.6(vue@3.5.43))(esbuild@0.28.2)(magicast@0.5.5)(rolldown@1.2.9)(rollup@4.63.4)(vite@8.3.0(esbuild@0.28.2)(jiti@2.7.0)(sass@1.104.1)(terser@5.51.2))
+      '@noble/ciphers':
+        specifier: ^2.4.0
+        version: 2.4.0
       '@nuxt/fonts':
         specifier: 0.14.0
         version: 0.14.0(db0@0.3.4)(esbuild@0.28.2)(ioredis@5.11.1)(magic-string@1.4.1)(magicast@0.5.5)(rolldown@1.2.9)(rollup@4.63.4)(vite@8.3.0(esbuild@0.28.2)(jiti@2.7.0)(sass@1.104.1)(terser@5.51.2))
@@ -582,6 +585,10 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -4095,6 +4102,8 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@noble/ciphers@2.4.0': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
