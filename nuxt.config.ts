@@ -15,6 +15,12 @@ export default defineNuxtConfig({
       titleTemplate: "stash - %s",
       charset: 'utf-16',
       viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+      link: [
+        {
+          rel: 'icon',
+          href: '/stash.png',
+        }
+      ],
       script: [
         {
           // Applied before hydration so the correct theme paints immediately, no flash.
