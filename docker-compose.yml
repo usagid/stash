@@ -1,8 +1,6 @@
 services:
   stash:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/usagid/stash:latest
     restart: unless-stopped
     ports:
       - "${STASH_PORT:-3000}:3000"
