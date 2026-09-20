@@ -1,5 +1,7 @@
 {
   "name": "stash",
+
+  "packageManager": "pnpm@10.31.0",
   "type": "module",
   "private": true,
   "scripts": {
